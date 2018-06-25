@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace SynoThumbnailGen
@@ -26,7 +27,8 @@ namespace SynoThumbnailGen
         };
 
         private static string[] extensions = { ".jpg", ".jpeg" };
-        private static bool verbose = false;
+        private static bool s_verbose = false;
+        private static bool s_alphaSort = false;
 
         private static void Usage()
         {
@@ -47,10 +49,12 @@ namespace SynoThumbnailGen
 
             if (recurse)
             {
-                var folders = root.GetDirectories()
-                                 .Where(IncludeFolder)
-                                 .OrderByDescending(x => x.CreationTimeUtc)
-                                 .ToList();
+                var filteredDirs = root.GetDirectories().Where(IncludeFolder);
+
+                var ordered = s_alphaSort ? filteredDirs.OrderBy(x => x.Name) :
+                                              filteredDirs.OrderByDescending(x => x.CreationTimeUtc);
+
+                var folders = ordered.ToList();
 
                 int total = folders.Count();
                 int current = 0;
@@ -93,7 +97,7 @@ namespace SynoThumbnailGen
             {
                 current++;
 
-                if (verbose)
+                if (s_verbose)
                     Log("Processing ({0} of {1}) - {2} into {3} for {4} sizes.", current, total, f.FullName, f.FullName, thumbConfigs.Length);
                 else
                     Log("Processing ({0} of {1}) {2}.", current, total, f.FullName);
@@ -118,6 +122,7 @@ namespace SynoThumbnailGen
             // makes imagemagic more efficient with its memory allocation, so significantly faster. 
             string args = string.Format(" -define jpeg:size=3000x2250 \"{0}\" -quality 90 -unsharp 0.5x0.5+1.25+0.0 ", source.FullName);
             bool workToDo = false;
+            List<string> destinationFiles = new List<string>();
 
             // First pre-check whether the thumbs exist - don't want to create them if they don't.
             foreach (var size in sizes)
@@ -127,20 +132,22 @@ namespace SynoThumbnailGen
                 string destDir = Path.GetDirectoryName(destFile);
                 if (!Directory.Exists(destDir))
                 {
-                    if( verbose)
+                    if( s_verbose)
                         Log("Creating directory: {0}", destDir);
                     Directory.CreateDirectory(destDir);
                 }
 
-                if (File.Exists(destFile))
+                if( File.Exists(destFile) && File.GetLastWriteTime( destFile) == source.LastWriteTime )
                 {
-                    if (verbose)
-                        Log("File {0} already exists.", destFile);
+                    // If the creation time of both files is the same, we're done.
+                    if (s_verbose)
+                        Log("File {0} already exists with matching creation time.", destFile);
                     continue; // Don't re-gen it, we're done
                 }
 
                 // File didn't exist, so add it to the command-line. 
                 args += string.Format(" -resize {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile);
+                destinationFiles.Add( destFile );
                 workToDo = true;
             }
 
@@ -157,7 +164,7 @@ namespace SynoThumbnailGen
 
                 try
                 {
-                    if (verbose)
+                    if (s_verbose)
                         Log("  Executing: {0} {1}", process.StartInfo.FileName, process.StartInfo.Arguments);
                     else 
                         Log("  Executing ImageMagic: {0}", process.StartInfo.FileName);
@@ -170,8 +177,14 @@ namespace SynoThumbnailGen
                         process.BeginOutputReadLine();
                         process.WaitForExit();
 
-                        if( verbose)
+                        if( s_verbose)
                             Log("Execution complete.");
+
+                        // Touch the files so they match the source
+                        foreach( string f in destinationFiles )
+                        {
+                            File.SetLastWriteTime(f, source.LastWriteTime);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -185,7 +198,7 @@ namespace SynoThumbnailGen
 
         static void Process_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
-            if (!verbose)
+            if (!s_verbose)
                 return;
 
             if (!string.IsNullOrEmpty(e.Data))
@@ -209,10 +222,16 @@ namespace SynoThumbnailGen
                 recurse = true;
             }
 
+            if (args.Any(x => x.ToLower() == "-alpha"))
+            {
+                Log("Alphabetic sort enabled.");
+                s_alphaSort = true;
+            }
+
             if (args.Any(x => x.ToLower() == "-v"))
             {
                 Log("Verbose mode enabled.");
-                verbose = true;
+                s_verbose = true;
             }
 
             var root = new DirectoryInfo(rootFolder);
