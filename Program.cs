@@ -35,9 +35,12 @@ namespace SynoThumbnailGen
 
         private static void Usage()
         {
-
-            Console.WriteLine("Usage: ThumbnailGen src");
-            Console.WriteLine("Generates Synology thumbnails in the within the specified folder.");
+            Console.WriteLine("Usage: ThumbnailGen <folder> [options]");
+            Console.WriteLine("Generates Synology thumbnails in the within the specified folder. Options:");
+            Console.WriteLine(" -v      Enable verbose logging.");
+            Console.WriteLine(" -r      Recurse into subdirectories.");
+            Console.WriteLine(" -alpha  Process folders in alphabetic order (default is last-mod, most recent first).");
+            Console.WriteLine(" -gm     Use GraphicsMagick instead of ImageMagick.");
         }
 
         public static void LogVerbose(string format, params object[] args)
