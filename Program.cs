@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
+using GraphicsMagick;
 
 namespace SynoThumbnailGen
 {
@@ -32,6 +33,7 @@ namespace SynoThumbnailGen
         private static bool s_verbose = false;
         private static bool s_alphaSort = false;
         private static bool s_useGraphicsMagick = false;
+        private static bool s_useGraphicsMagickNet = false;
 
         private static void Usage()
         {
@@ -113,15 +115,59 @@ namespace SynoThumbnailGen
 
                 LogVerbose("Analysing ({0} of {1}) - {2} into {3} for {4} sizes.", current, total, f.FullName, f.FullName, thumbConfigs.Length);
 
-                if (ConvertFile(f, thumbConfigs))
+                bool convertSucceeded = false;
+
+                if (s_useGraphicsMagickNet)
+                {
+                    convertSucceeded = ConvertFileNative(f, thumbConfigs);
+                }
+                else
+                {
+                    convertSucceeded = ConvertFile(f, thumbConfigs);
+                }
+
+                if (convertSucceeded)
                 {
                     Log("Converted ({0} of {1}) {2}.", current, total, f.FullName);
                     converted++;
                 }
-
             }
 
             Log("Folder complete. {0} of {1} files had thumbnails generated.", converted, total);
+        }
+
+        /// <summary>
+        /// Currently a work in progress - play with the GraphicsMagick.Net library
+        /// to do the conversion without having to install GM.
+        /// </summary>
+        /// <returns><c>true</c>, if file native was converted, <c>false</c> otherwise.</returns>
+        /// <param name="source">Source.</param>
+        /// <param name="sizes">Sizes.</param>
+        private static bool ConvertFileNative( FileInfo source, SynoThumb[] sizes )
+        {
+            try
+            {
+                MagickReadSettings settings = new MagickReadSettings { Height = 1280, Width = 1280 };
+                MagickImage image = new MagickImage(source, settings);
+
+                image.Quality = 90;
+                image.Unsharpmask(0.5, 0.5, 1.25, 0);
+
+                foreach (var size in sizes)
+                {
+                    string destFile = string.Format(string.Format(size.fileFormatString, source.DirectoryName, source.Name));
+                    //image.AutoOrient();
+                    image.Thumbnail(new MagickGeometry(size.width, size.height));
+                    image.Write(destFile);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("Exception processing GraphicsMagick.Net: {0}", ex.Message);
+                return false;
+            }
         }
 
         /// <summary>
@@ -143,10 +189,13 @@ namespace SynoThumbnailGen
             // makes imagemagic more efficient with its memory allocation, so significantly faster. 
             string args;
 
-            if( s_useGraphicsMagick )
-                args = string.Format(" convert -size 1280x1280 \"{0}\" -quality 90 -unsharp 0.5x0.5+1.25+0.0 ", source.FullName);
+            int maxHeight = sizes.Max(x => x.height);
+            int maxWidth = sizes.Max(x => x.width);
+
+            if ( s_useGraphicsMagick )
+                args = string.Format(" convert -size {0}x{1} \"{2}\" -quality 90 -unsharp 0.5x0.5+1.25+0.0 ", maxHeight, maxWidth, source.FullName);
             else
-                args = string.Format(" -define jpeg:size=1280x1280 \"{0}\" -quality 90 -unsharp 0.5x0.5+1.25+0.0 ", source.FullName);
+                args = string.Format(" -define jpeg:size={0}x{1} \"{2}\" -quality 90 -unsharp 0.5x0.5+1.25+0.0 ", maxHeight, maxWidth, source.FullName);
 
             List<string> destinationFiles = new List<string>();
             FileInfo altSource = null;
@@ -180,7 +229,7 @@ namespace SynoThumbnailGen
                 if( s_useGraphicsMagick )
                     argsList.Add( string.Format(" -thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
                 else
-                    argsList.Add( string.Format(" -resize {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
+                    argsList.Add( string.Format(" -thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
 
                 destinationFiles.Add( destFile );
             }
@@ -294,6 +343,21 @@ namespace SynoThumbnailGen
                 Log("GraphicsMagick enabled.");
                 s_useGraphicsMagick = true;
             }
+
+            if (args.Any(x => x.ToLower() == "-net"))
+            {
+                Log("GraphicsMagick.Net enabled.");
+                s_useGraphicsMagickNet = true;
+                try
+                {
+                    GraphicsMagickNET.Initialize(null);
+                }
+                catch ( Exception ex )
+                {
+                    Log("Failed to initialise GraphicksMagick.Net: {0}", ex);
+                }
+            }
+
             var root = new DirectoryInfo(rootFolder);
 
             Log("Starting Synology thumbnail creation for folder {0}", root);
