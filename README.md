@@ -28,8 +28,10 @@ the EXE over to a folder and in terminal, run it, passing in the root folder to 
 #### Arguments
 
 ```
--r will force the tool to process all subdirs recursively. You probably want this. 
--v will turn on verbose logging.
+-r     will force the tool to process all subdirs recursively. You probably want this. 
+-v     will turn on verbose logging.
+-alpha will process folders in alphabetic order (default is most-recent-first)
+-gm    will use GraphicsMagick (if installed) which converts about twice as fast as IM
 ```
 ### Disclaimer
 
