@@ -3,7 +3,6 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
-using GraphicsMagick;
 
 namespace SynoThumbnailGen
 {
@@ -42,7 +41,7 @@ namespace SynoThumbnailGen
             Console.WriteLine(" -v      Enable verbose logging.");
             Console.WriteLine(" -r      Recurse into subdirectories.");
             Console.WriteLine(" -alpha  Process folders in alphabetic order (default is last-mod, most recent first).");
-            Console.WriteLine(" -gm     Use GraphicsMagick instead of ImageMagick.");
+            Console.WriteLine(" -gm     Use GraphicsMagick instead of ImageMagick (which is about twice as fast).");
         }
 
         public static void LogVerbose(string format, params object[] args)
@@ -145,6 +144,24 @@ namespace SynoThumbnailGen
         /// <param name="sizes">Sizes.</param>
         private static bool ConvertFileNative( FileInfo source, SynoThumb[] sizes )
         {
+            Log("GraphicsMagick.Net not currently supported.");
+            return false;
+            /*
+                static bool initialised = false;
+
+                if( ! initialised )
+                {
+                    initialised = true;
+                    try
+                    {
+                        GraphicsMagickNET.Initialize(null);
+                    }
+                    catch ( Exception ex )
+                    {
+                        Log("Failed to initialise GraphicksMagick.Net: {0}", ex);
+                    }
+                }
+                
             try
             {
                 MagickReadSettings settings = new MagickReadSettings { Height = 1280, Width = 1280 };
@@ -168,6 +185,7 @@ namespace SynoThumbnailGen
                 Log("Exception processing GraphicsMagick.Net: {0}", ex.Message);
                 return false;
             }
+*/
         }
 
         /// <summary>
@@ -227,9 +245,9 @@ namespace SynoThumbnailGen
 
                 // File didn't exist, so add it to the command-line. 
                 if( s_useGraphicsMagick )
-                    argsList.Add( string.Format(" -thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
+                    argsList.Add( string.Format("-thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
                 else
-                    argsList.Add( string.Format(" -thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
+                    argsList.Add( string.Format("-thumbnail {0}x{1}> -auto-orient -write \"{2}\" ", size.height, size.width, destFile) );
 
                 destinationFiles.Add( destFile );
             }
@@ -278,22 +296,35 @@ namespace SynoThumbnailGen
 
                         LogVerbose("Execution complete.");
                         conversionPerformed = true;
-
-                        // Touch the files so they match the source
-                        foreach( string f in destinationFiles )
-                        {
-                            if( File.Exists( f ))
-                                File.SetLastWriteTime(f, source.LastWriteTime);
-                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     Log("Unable to start process: {0}", ex.Message);
+                    conversionPerformed = false;
                 }
             }
             else
                 LogVerbose("Thumbs already exist in all resolutions. Skipping...");
+
+            if (conversionPerformed)
+            {
+                // Touch the files so they match the source
+                foreach (string f in destinationFiles)
+                {
+                    if (File.Exists(f))
+                    {
+                        try
+                        {
+                            File.SetLastWriteTimeUtc(f, source.LastWriteTime);
+                        }
+                        catch (IOException ex)
+                        {
+                            Log("Unable to update file time {0} to {1}: {2}. Probably a permissions problem.", source.LastWriteTime, f, ex.Message);
+                        }
+                    }
+                }
+            }
 
             return conversionPerformed;
         }
@@ -348,14 +379,6 @@ namespace SynoThumbnailGen
             {
                 Log("GraphicsMagick.Net enabled.");
                 s_useGraphicsMagickNet = true;
-                try
-                {
-                    GraphicsMagickNET.Initialize(null);
-                }
-                catch ( Exception ex )
-                {
-                    Log("Failed to initialise GraphicksMagick.Net: {0}", ex);
-                }
             }
 
             var root = new DirectoryInfo(rootFolder);
