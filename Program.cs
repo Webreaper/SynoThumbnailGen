@@ -132,7 +132,8 @@ namespace SynoThumbnailGen
                 }
             }
 
-            Log("Folder complete. {0} of {1} files had thumbnails generated.", converted, total);
+            if ( converted > 0 )
+                Log("Folder complete. {0} of {1} thumbnails were generated.", converted, total);
         }
 
         /// <summary>
@@ -300,7 +301,7 @@ namespace SynoThumbnailGen
                 }
                 catch (Exception ex)
                 {
-                    Log("Unable to start process: {0}", ex.Message);
+                    Log("ERROR: Conversion failed. Unable to start process: {0}", ex.Message);
                     conversionPerformed = false;
                 }
             }
